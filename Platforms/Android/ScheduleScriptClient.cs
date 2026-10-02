@@ -6,8 +6,9 @@ namespace RegulusMobile;
 sealed class ScheduleScriptClient : WebViewClient
 {
 	const string StartLine = "const start = addCalendarMonths(today, -1);";
-	const string FutureLine = "const end = addCalendarMonths(today, 2);";
+	const string OriginalFutureLine = "const end = addCalendarMonths(today, 2);";
 	const string PatchedStart = "const start = addCalendarMonths(today, -3);";
+	const string PatchedFuture = "const end = addCalendarMonths(today, 3);";
 
 	static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
 	static readonly Dictionary<string, byte[]> Cache = new(StringComparer.Ordinal);
@@ -85,9 +86,13 @@ sealed class ScheduleScriptClient : WebViewClient
 		{
 			var bytes = Http.GetByteArrayAsync(url).ConfigureAwait(false).GetAwaiter().GetResult();
 			var text = System.Text.Encoding.UTF8.GetString(bytes);
-			if (!text.Contains(StartLine, StringComparison.Ordinal) || !text.Contains(FutureLine, StringComparison.Ordinal))
+			if (!text.Contains(StartLine, StringComparison.Ordinal)
+				|| !text.Contains(OriginalFutureLine, StringComparison.Ordinal))
 				return null;
-			var patched = System.Text.Encoding.UTF8.GetBytes(text.Replace(StartLine, PatchedStart, StringComparison.Ordinal));
+			var patchedText = text
+				.Replace(StartLine, PatchedStart, StringComparison.Ordinal)
+				.Replace(OriginalFutureLine, PatchedFuture, StringComparison.Ordinal);
+			var patched = System.Text.Encoding.UTF8.GetBytes(patchedText);
 			lock (Gate) Cache[url] = patched;
 			return patched;
 		}

@@ -126,11 +126,6 @@ public partial class RegulusPage : ContentPage
 
 	void OnReceptionMessage(string payload)
 	{
-		if (payload == "refresh")
-		{
-			RequestRefresh(false);
-			return;
-		}
 		if (payload == "none")
 		{
 			ShowStatus("受付番号が見つかりません");
@@ -465,25 +460,6 @@ if(document.body.__regulusHolidayWatch) return;
 document.body.__regulusHolidayWatch=1;
 new MutationObserver(function(){paintHolidays();}).observe(document.body,{childList:true,subtree:true});
 }
-function installRefresh(){
-if(document.getElementById('regulus-refresh')) return;
-var tabs=document.querySelector('.view-tabs');
-if(!tabs) return;
-var btn=document.createElement('button');
-btn.id='regulus-refresh';
-btn.type='button';
-btn.textContent='↻ 更新';
-btn.className='view-tab';
-btn.style.flex='0 0 auto';
-btn.style.padding='0 10px';
-btn.style.fontSize='13px';
-btn.addEventListener('click',function(ev){
-ev.preventDefault();
-ev.stopPropagation();
-if(window.RegulusNative&&RegulusNative.postReception) RegulusNative.postReception('refresh');
-});
-tabs.appendChild(btn);
-}
 document.addEventListener('click',function(ev){
 var t=ev.target;
 if(!t||!t.closest) return;
@@ -523,7 +499,6 @@ installDayNav();
 widenToday();
 paintHolidays();
 watchHolidayStyles();
-installRefresh();
 watch('visit-cards');
 watch('month-list');
 paintVisit();
