@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="RegulusMobile.RegulusPage"
+             Title="REGULUS"
+             BackgroundColor="#EEF3F8">
+
+    <Grid BackgroundColor="#EEF3F8">
+        <WebView x:Name="RegulusWeb"
+                 Source="https://regulus-scheduler-95e3c.web.app/mobile-web/index.html"
+                 Navigating="OnRegulusNavigating"
+                 Navigated="OnRegulusNavigated" />
+
+        <Grid x:Name="CustomerPanel"
+              IsVisible="False"
+              BackgroundColor="#EEF3F8"
+              RowDefinitions="Auto,*">
+            <Grid Grid.Row="0"
+                  Padding="4,6,12,6"
+                  ColumnDefinitions="Auto,*,Auto"
+                  BackgroundColor="#0E5A8A">
+                <Button Text="← 戻る"
+                        Clicked="OnClosePanelClicked"
+                        TextColor="White"
+                        BackgroundColor="#0E5A8A"
+                        BorderWidth="0"
+                        FontSize="16"
+                        Padding="8,4" />
+                <Label x:Name="BridgeStatusLabel"
+                       Grid.Column="1"
+                       Text="顧客情報"
+                       FontAttributes="Bold"
+                       FontSize="18"
+                       TextColor="White"
+                       BackgroundColor="#0E5A8A"
+                       VerticalOptions="Center"
+                       HorizontalTextAlignment="Center" />
+                <Label x:Name="HeaderReceptionLabel"
+                       Grid.Column="2"
+                       FontSize="12"
+                       TextColor="White"
+                       BackgroundColor="#0E5A8A"
+                       VerticalOptions="Center"
+                       HorizontalTextAlignment="End" />
+            </Grid>
+            <ScrollView Grid.Row="1" BackgroundColor="#EEF3F8">
+                <VerticalStackLayout x:Name="RegulusCustomerStack"
+                                     Spacing="8"
+                                     Padding="10,8,10,20"
+                                     BackgroundColor="#EEF3F8" />
+            </ScrollView>
+        </Grid>
+    </Grid>
+
+</ContentPage>

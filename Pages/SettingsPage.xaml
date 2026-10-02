@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="RegulusMobile.SettingsPage"
+             Title="Jシステム設定"
+             BackgroundColor="White">
+
+    <ScrollView BackgroundColor="White">
+        <VerticalStackLayout Padding="16" Spacing="12" BackgroundColor="White">
+            <Label Text="Jシステム設定" Style="{StaticResource Headline}" TextColor="Black" BackgroundColor="White" />
+            <Label Text="RegulusMobile 0.1.18" TextColor="Black" BackgroundColor="White" />
+            <Label Text="保存したIDとパスワードは、今回のログインには使いません。" TextColor="Black" BackgroundColor="White" />
+            <Button Text="ログインを試す" Clicked="OnTryLoginClicked" TextColor="Black" BackgroundColor="White" />
+            <Label Text="ユーザーID" TextColor="Black" BackgroundColor="White" />
+            <Entry x:Name="UserIdEntry" TextColor="Black" BackgroundColor="White" PlaceholderColor="Gray" />
+            <Label Text="パスワード" TextColor="Black" BackgroundColor="White" />
+            <Entry x:Name="PasswordEntry" IsPassword="True" TextColor="Black" BackgroundColor="White" PlaceholderColor="Gray" />
+            <HorizontalStackLayout Spacing="12" BackgroundColor="White">
+                <Label Text="認証情報を保存する" VerticalOptions="Center" TextColor="Black" BackgroundColor="White" />
+                <Switch x:Name="SaveSwitch" Toggled="OnSaveSwitchToggled" />
+            </HorizontalStackLayout>
+            <Button Text="保存" Clicked="OnSaveClicked" TextColor="Black" BackgroundColor="White" />
+            <Button Text="保存した認証情報を削除" Clicked="OnDeleteClicked" TextColor="Black" BackgroundColor="White" />
+            <Label x:Name="StatusLabel" TextColor="Black" BackgroundColor="White" />
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="RegulusMobile.JSystemPage"
+             Title="Jシステム"
+             BackgroundColor="White">
+
+    <Grid x:Name="RootGrid" RowDefinitions="Auto,*,Auto" BackgroundColor="White">
+        <VerticalStackLayout Grid.Row="0" Padding="12,8" Spacing="4" BackgroundColor="White">
+            <Label x:Name="SessionStatusLabel" Text="Jシステム：未確認" FontAttributes="Bold" TextColor="Black" BackgroundColor="White" />
+            <Label x:Name="LoadStateLabel" Text="Jシステム状態：未表示" FontAttributes="Bold" TextColor="Black" BackgroundColor="White" />
+            <Label x:Name="CurrentUrlLabel" Text="現在URL：未表示" TextColor="Black" BackgroundColor="White" LineBreakMode="WordWrap" />
+            <Label x:Name="LoginStateLabel" Text="ログイン状態：未確認" TextColor="Black" BackgroundColor="White" />
+            <Label x:Name="FillStatusLabel" Text="自動ログイン：待機" TextColor="Black" BackgroundColor="White" />
+            <Label x:Name="AreaLabel" Text="表示領域：未計測" TextColor="Black" BackgroundColor="White" />
+            <Button Text="Jシステムを開く" Clicked="OnOpenHomeClicked" TextColor="Black" BackgroundColor="White" />
+            <Entry x:Name="ReceptionEntry"
+                   Placeholder="受付番号（8桁）"
+                   Keyboard="Numeric"
+                   MaxLength="8"
+                   TextColor="Black"
+                   BackgroundColor="White"
+                   PlaceholderColor="Gray" />
+            <Button Text="顧客ページを開く" Clicked="OnOpenCustomerClicked" TextColor="Black" BackgroundColor="White" />
+        </VerticalStackLayout>
+
+        <Border Grid.Row="1"
+                Margin="8,0"
+                Stroke="#94a3b8"
+                StrokeThickness="1"
+                BackgroundColor="White"
+                Padding="0">
+            <WebView x:Name="JWeb"
+                     BackgroundColor="White"
+                     HorizontalOptions="Fill"
+                     VerticalOptions="Fill"
+                     Navigating="OnWebNavigating"
+                     Navigated="OnWebNavigated"
+                     SizeChanged="OnWebSizeChanged" />
+        </Border>
+
+        <VerticalStackLayout Grid.Row="2" Padding="12,8" Spacing="8" BackgroundColor="White">
+            <Button x:Name="DiagToggleButton"
+                    Text="▶ 診断 / 開発者向け"
+                    Clicked="OnToggleDiagClicked"
+                    TextColor="Black"
+                    BackgroundColor="White" />
+            <VerticalStackLayout x:Name="DiagPanel" IsVisible="False" Spacing="8" BackgroundColor="White">
+                <Grid HeightRequest="160" BackgroundColor="White">
+                    <ScrollView BackgroundColor="White" Orientation="Vertical">
+                        <Label x:Name="ResultLabel"
+                               Text="テスト結果：未実行"
+                               TextColor="Black"
+                               BackgroundColor="White"
+                               LineBreakMode="WordWrap" />
+                    </ScrollView>
+                </Grid>
+                <Button Text="JS基本テスト" Clicked="OnBasicJsClicked" TextColor="Black" BackgroundColor="White" />
+                <Button Text="JavaScript診断" Clicked="OnDiagnoseClicked" TextColor="Black" BackgroundColor="White" />
+                <Button Text="HTML取得テスト" Clicked="OnReadHtmlClicked" TextColor="Black" BackgroundColor="White" />
+                <Button Text="DOM構造調査" Clicked="OnSurveyDomClicked" TextColor="Black" BackgroundColor="White" />
+            </VerticalStackLayout>
+        </VerticalStackLayout>
+    </Grid>
+
+</ContentPage>

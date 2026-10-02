@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="RegulusMobile.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    FlyoutBehavior="Disabled"
+    Title="REGULUS Mobile"
+    BackgroundColor="White"
+    ForegroundColor="Black"
+    TitleColor="Black"
+    UnselectedColor="#404040"
+    TabBarBackgroundColor="White"
+    TabBarForegroundColor="Black"
+    TabBarTitleColor="Black"
+    TabBarUnselectedColor="#404040">
+
+    <TabBar>
+        <ShellContent x:Name="RegulusTab" Title="REGULUS" Route="regulus" />
+        <ShellContent x:Name="SearchTab" Title="検索" Route="search" />
+        <ShellContent x:Name="JSystemTab" Title="Jシステム" Route="jsystem" />
+        <ShellContent x:Name="SettingsTab" Title="設定" Route="settings" />
+    </TabBar>
+
+</Shell>

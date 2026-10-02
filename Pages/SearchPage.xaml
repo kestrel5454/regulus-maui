@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="RegulusMobile.SearchPage"
+             Title="検索"
+             BackgroundColor="#EEF3F8">
+
+    <Grid BackgroundColor="#EEF3F8">
+        <Grid RowDefinitions="Auto,*" BackgroundColor="#EEF3F8">
+            <VerticalStackLayout Grid.Row="0" Padding="12,10" Spacing="8" BackgroundColor="#EEF3F8">
+                <Label Text="検索" FontSize="20" FontAttributes="Bold" TextColor="#0F172A" BackgroundColor="#EEF3F8" />
+                <Entry x:Name="NameEntry" Placeholder="名前" ReturnType="Search" Completed="OnSearchClicked" TextColor="Black" BackgroundColor="White" PlaceholderColor="Gray" />
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                    <Entry x:Name="SlipEntry" Grid.Column="0" Placeholder="伝票番号" ReturnType="Search" Completed="OnSearchClicked" TextColor="Black" BackgroundColor="White" PlaceholderColor="Gray" />
+                    <Entry x:Name="TelEntry" Grid.Column="1" Placeholder="電話番号" Keyboard="Telephone" ReturnType="Search" Completed="OnSearchClicked" TextColor="Black" BackgroundColor="White" PlaceholderColor="Gray" />
+                </Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                    <Button Grid.Column="0" Text="検索" Clicked="OnSearchClicked" TextColor="White" BackgroundColor="#0E5A8A" />
+                    <Button Grid.Column="1" Text="クリア" Clicked="OnClearClicked" TextColor="#0F172A" BackgroundColor="#E8EEF4" />
+                </Grid>
+                <Label x:Name="SearchStatusLabel" TextColor="#0F172A" BackgroundColor="#EEF3F8" />
+            </VerticalStackLayout>
+            <ScrollView Grid.Row="1" BackgroundColor="#EEF3F8">
+                <VerticalStackLayout x:Name="ResultStack" Padding="12,0,12,16" Spacing="4" BackgroundColor="#EEF3F8" />
+            </ScrollView>
+        </Grid>
+
+        <Grid x:Name="CustomerPanel"
+              IsVisible="False"
+              BackgroundColor="#EEF3F8"
+              RowDefinitions="Auto,*">
+            <Grid Grid.Row="0" Padding="4,6,12,6" ColumnDefinitions="Auto,*" BackgroundColor="#0E5A8A">
+                <Button Text="← 戻る"
+                        Clicked="OnCloseCustomerClicked"
+                        TextColor="White"
+                        BackgroundColor="#0E5A8A"
+                        BorderWidth="0"
+                        FontSize="16"
+                        Padding="8,4" />
+                <Label Grid.Column="1"
+                       Text="顧客情報"
+                       FontAttributes="Bold"
+                       FontSize="18"
+                       TextColor="White"
+                       BackgroundColor="#0E5A8A"
+                       VerticalOptions="Center"
+                       HorizontalTextAlignment="Center" />
+            </Grid>
+            <ScrollView Grid.Row="1" BackgroundColor="#EEF3F8">
+                <VerticalStackLayout x:Name="CustomerStack" Padding="10,8,10,20" Spacing="8" BackgroundColor="#EEF3F8" />
+            </ScrollView>
+        </Grid>
+    </Grid>
+
+</ContentPage>
