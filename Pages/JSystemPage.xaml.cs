@@ -1306,7 +1306,45 @@ public partial class JSystemPage : ContentPage
 		{
 			text.Children.Add(AddressLine(DisplayValue(address), true));
 		}
-		return MakeTapRow("📍", text, CanMap(address), false, address);
+		var content = new VerticalStackLayout { Spacing = 5 };
+		content.Children.Add(MakeTapRow("📍", text, CanMap(address), false, address));
+		if (CanMap(address))
+		{
+			var destination = address;
+			var mapButtons = new HorizontalStackLayout
+			{
+				Spacing = 8,
+				HorizontalOptions = LayoutOptions.End
+			};
+			var googleMap = new Button
+			{
+				Text = "GoogleMap",
+				FontSize = 14,
+				FontAttributes = FontAttributes.Bold,
+				TextColor = Colors.White,
+				BackgroundColor = Color.FromArgb("#4285F4"),
+				CornerRadius = 7,
+				Padding = new Thickness(12, 5),
+				HeightRequest = 38
+			};
+			googleMap.Clicked += async (_, _) => await OpenAddressAsync(destination);
+			var yahooNavi = new Button
+			{
+				Text = "Yahoo!カーナビ",
+				FontSize = 14,
+				FontAttributes = FontAttributes.Bold,
+				TextColor = Colors.White,
+				BackgroundColor = Color.FromArgb("#E60033"),
+				CornerRadius = 7,
+				Padding = new Thickness(12, 5),
+				HeightRequest = 38
+			};
+			yahooNavi.Clicked += async (_, _) => await OpenYahooCarNaviAsync(destination);
+			mapButtons.Children.Add(googleMap);
+			mapButtons.Children.Add(yahooNavi);
+			content.Children.Add(mapButtons);
+		}
+		return content;
 	}
 
 	static Label AddressLine(string text, bool emphasize)
@@ -1712,6 +1750,31 @@ public partial class JSystemPage : ContentPage
 		}
 		catch (Exception ex) when (ex is not OutOfMemoryException)
 		{
+		}
+	}
+
+	async Task OpenYahooCarNaviAsync(string address)
+	{
+		if (!CanMap(address)) return;
+		try
+		{
+			var query = MapQueryAddress(address);
+			var locations = await Geocoding.Default.GetLocationsAsync(query);
+			var location = locations?.FirstOrDefault();
+			if (location == null)
+			{
+				await DisplayAlertAsync("Yahoo!カーナビ", "住所の位置を取得できませんでした。", "閉じる");
+				return;
+			}
+			var latitude = location.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			var longitude = location.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			var name = Uri.EscapeDataString(query);
+			var uri = new Uri($"yjcarnavi://navi/select?lat={latitude}&lon={longitude}&name={name}");
+			await Launcher.Default.OpenAsync(uri);
+		}
+		catch (Exception ex) when (ex is not OutOfMemoryException)
+		{
+			await DisplayAlertAsync("Yahoo!カーナビ", "Yahoo!カーナビを起動できませんでした。アプリがインストールされているか確認してください。", "閉じる");
 		}
 	}
 
