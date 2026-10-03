@@ -1,4 +1,4 @@
-﻿namespace RegulusMobile;
+namespace RegulusMobile;
 
 public partial class AppShell : Shell
 {

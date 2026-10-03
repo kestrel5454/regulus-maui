@@ -204,7 +204,7 @@ public partial class RegulusPage : ContentPage
 	{
 		CustomerPanel.IsVisible = false;
 		HeaderReceptionLabel.Text = "";
-		_ = RegulusWeb.EvaluateJavaScriptAsync("var d=document.getElementById('visit-detail');if(d)d.hidden=true;");
+		_ = RegulusWeb.EvaluateJavaScriptAsync("['visit-detail','comment-dialog'].forEach(function(id){var d=document.getElementById(id);if(d)d.hidden=true;});");
 	}
 
 	static bool TryReadBridgeNumber(string payload, out string kind, out string number)
@@ -269,7 +269,24 @@ var state=codeOf(text);
 var body=state==='ok'?(kind+':'+pick(text)):state;
 try{if(window.RegulusNative&&RegulusNative.postReception) RegulusNative.postReception(body);}catch(e){}
 }
-function hideVisit(){var detail=document.getElementById('visit-detail');if(detail) detail.hidden=true;}
+function hideVisit(){
+var ids=['visit-detail','comment-dialog'];
+for(var i=0;i<ids.length;i++){
+var detail=document.getElementById(ids[i]);
+if(!detail) continue;
+detail.hidden=true;
+}
+}
+function visitReceptionText(){
+var ids=['visit-detail-comments','comment-list','edit-comment-list'];
+var text='';
+for(var i=0;i<ids.length;i++){
+var value=textOf(document.getElementById(ids[i]));
+if(codeOf(value)==='ok') return value;
+if(value) text+='\n'+value;
+}
+return text;
+}
 function scheduleCustomerButton(node){
 var link=node.closest('#edit-open-customer');
 if(link) return link;
@@ -352,8 +369,10 @@ if(body) body.appendChild(mark); else card.appendChild(mark);
 }
 paintVisit();
 };
-document.addEventListener('click',function(ev){
+function handleCustomerBridge(ev){
 var t=ev.target;if(!t||!t.closest) return;
+var visit=t.closest('.visit-card');
+if(ev.type==='touchend'&&!visit) return;
 var customer=scheduleCustomerButton(t);
 if(customer){
 ev.preventDefault();
@@ -361,14 +380,12 @@ ev.stopPropagation();
 setTimeout(function(){post('s',textOf(document.getElementById('edit-comment-list')));},0);
 return;
 }
-var visit=t.closest('.visit-card');
 if(visit&&!visit.classList.contains('is-empty')&&visit.closest('#visit-cards')){
 window.__regulusVisitCard=visit;
 var stamp=++window.__regulusVisitStamp;
 setTimeout(function(){
 if(window.__regulusVisitStamp!==stamp) return;
-var box=document.getElementById('visit-detail-comments');
-var text=textOf(box);
+var text=visitReceptionText();
 hideVisit();
 post('v',text);
 },0);
@@ -377,7 +394,9 @@ return;
 var comment=t.closest('#edit-comment-list,#comment-list');
 if(!comment) return;
 setTimeout(function(){post('s',textOf(comment));},0);
-},true);
+}
+document.addEventListener('touchend',handleCustomerBridge,true);
+document.addEventListener('click',handleCustomerBridge,true);
 function renameTabs(){
 var schedule=document.getElementById('tab-schedule');
 var visit=document.getElementById('tab-visit');
@@ -442,6 +461,41 @@ btn.style.setProperty('padding','0 20px','important');
 btn.style.setProperty('min-width','84px','important');
 btn.style.setProperty('flex','0 0 auto','important');
 }
+var needsToday=true;
+var todayTimer=0;
+function showToday(){
+if(!needsToday) return;
+var list=document.getElementById('month-list');
+if(!list) return;
+var now=new Date();
+var iso=now.getFullYear()+'-'+pad2(now.getMonth()+1)+'-'+pad2(now.getDate());
+var target=list.querySelector('[data-date="'+iso+'"]');
+if(!target) return;
+needsToday=false;
+requestAnimationFrame(function(){
+target.scrollIntoView({block:'start',behavior:'auto'});
+var scroller=document.querySelector('.list-scroll');
+if(scroller) scroller.scrollTop=Math.max(0,target.offsetTop);
+});
+}
+function requestToday(){
+needsToday=true;
+if(todayTimer) clearTimeout(todayTimer);
+todayTimer=setTimeout(showToday,0);
+}
+function installTodayJump(){
+var list=document.getElementById('month-list');
+if(list&&!list.__regulusTodayWatch){
+list.__regulusTodayWatch=1;
+new MutationObserver(function(){requestToday();}).observe(list,{childList:true});
+}
+var tab=document.getElementById('tab-schedule');
+if(tab&&!tab.__regulusTodayClick){
+tab.__regulusTodayClick=1;
+tab.addEventListener('click',requestToday);
+}
+requestToday();
+}
 function paintHolidays(){
 var nodes=document.querySelectorAll('td,th,button,div,span');
 for(var i=0;i<nodes.length;i++){
@@ -497,6 +551,7 @@ ev.stopImmediatePropagation();
 renameTabs();
 installDayNav();
 widenToday();
+installTodayJump();
 paintHolidays();
 watchHolidayStyles();
 watch('visit-cards');
