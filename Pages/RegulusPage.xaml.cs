@@ -121,12 +121,25 @@ public partial class RegulusPage : ContentPage
 		if (e.Result != WebNavigationResult.Success) return;
 		lastRefreshUtc = DateTime.UtcNow;
 		InstallBridge();
-		_ = RegulusWeb.EvaluateJavaScriptAsync(BridgeScript);
+		_ = RestoreBridgeAsync();
+	}
+
+	async Task RestoreBridgeAsync()
+	{
+		await RegulusWeb.EvaluateJavaScriptAsync(BridgeScript);
+		await PublishDayCacheAsync();
 	}
 
 	void OnReceptionMessage(string payload)
 	{
+		if (payload == "day-fetch")
+		{
+			if (dayCacheRunning) CancelDayCache();
+			else _ = FetchDayCacheAsync();
+			return;
+		}
 		if (TryHandleDayManifest(payload)) return;
+		if (dayCacheRunning) return;
 		if (payload == "none")
 		{
 			ShowStatus("受付番号が見つかりません");
@@ -142,7 +155,6 @@ public partial class RegulusPage : ContentPage
 			ShowStatus("顧客情報取得失敗");
 			return;
 		}
-		dayCachePanelOpen = false;
 		var token = ++requestToken;
 		ShowStatus("顧客情報を取得中...");
 		var page = JSystemPage.Current;
@@ -165,6 +177,8 @@ public partial class RegulusPage : ContentPage
 				RegulusCustomerStack.Children.Add(page.CreateSharedCustomerView(card));
 				HeaderReceptionLabel.Text = card.ReceptionNo;
 				ShowStatus("顧客情報取得成功");
+				cachedDayNumbers.Add(number);
+				_ = PublishDayCacheAsync();
 				if (kind == "visit") _ = MarkVisitDirectAsync(card.HasDirectCollection);
 				return;
 			}
@@ -205,7 +219,6 @@ public partial class RegulusPage : ContentPage
 	void OnClosePanelClicked(object? sender, EventArgs e)
 	{
 		if (dayCacheRunning) CancelDayCache();
-		dayCachePanelOpen = false;
 		CustomerPanel.IsVisible = false;
 		HeaderReceptionLabel.Text = "";
 		_ = RegulusWeb.EvaluateJavaScriptAsync("['visit-detail','comment-dialog'].forEach(function(id){var d=document.getElementById(id);if(d)d.hidden=true;});");
@@ -376,6 +389,7 @@ paintVisit();
 function handleCustomerBridge(ev){
 var t=ev.target;if(!t||!t.closest) return;
 var visit=t.closest('.visit-card');
+if(visit&&window.__regulusDayCacheRunning){ev.preventDefault();ev.stopImmediatePropagation();return;}
 if(ev.type==='touchend'&&!visit) return;
 var customer=scheduleCustomerButton(t);
 if(customer){

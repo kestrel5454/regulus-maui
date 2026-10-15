@@ -8,8 +8,8 @@
     <ScrollView BackgroundColor="White">
         <VerticalStackLayout Padding="16" Spacing="12" BackgroundColor="White">
             <Label Text="Jシステム設定" Style="{StaticResource Headline}" TextColor="Black" BackgroundColor="White" />
-            <Label Text="RegulusMobile 0.1.18" TextColor="Black" BackgroundColor="White" />
-            <Label Text="保存したIDとパスワードは、今回のログインには使いません。" TextColor="Black" BackgroundColor="White" />
+            <Label Text="RegulusMobile 1.0.1" TextColor="Black" BackgroundColor="White" />
+            <Label Text="JシステムのユーザーIDとパスワードを入力し、「認証情報を保存する」をオンにして保存してください。保存後に「ログインを試す」を押すとログインできます。" TextColor="Black" BackgroundColor="White" />
             <Button Text="ログインを試す" Clicked="OnTryLoginClicked" TextColor="Black" BackgroundColor="White" />
             <Label Text="ユーザーID" TextColor="Black" BackgroundColor="White" />
             <Entry x:Name="UserIdEntry" TextColor="Black" BackgroundColor="White" PlaceholderColor="Gray" />

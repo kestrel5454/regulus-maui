@@ -122,6 +122,14 @@ public partial class JSystemPage : ContentPage
 			{
 				loginPhase = LoginPhase.CredentialsMissing;
 				SetSessionStatus("Jシステム：ログイン情報未設定");
+				await MainThread.InvokeOnMainThreadAsync(async () =>
+				{
+					var shell = Shell.Current;
+					await shell.DisplayAlertAsync("Jシステムのログイン設定",
+						"Jシステムのログイン情報が登録されていません。設定画面でユーザーIDとパスワードを入力して保存し、「ログインを試す」を押してください。",
+						"設定を開く");
+					await shell.GoToAsync("//settings");
+				});
 				return;
 			}
 			await MainThread.InvokeOnMainThreadAsync(() =>
@@ -866,8 +874,8 @@ public partial class JSystemPage : ContentPage
 	{
 		var priority = card.PromiseDetails;
 		stack.Children.Add(MakeBandCard("基本情報", BandBasic, BodyBasic,
-			MakePair("受付No", card.ReceptionNo, "伝票番号", card.SlipNo),
-			MakePlainField("訪問確定", card.VisitConfirmed, 17, true)));
+			MakePair("受付No", FormatSlipNumber(card.ReceptionNo), "伝票番号", FormatSlipNumber(card.SlipNo)),
+			MakePair("依頼日", card.RequestDate, "訪問確定日", FormatVisitConfirmed(card.VisitConfirmed))));
 		stack.Children.Add(MakeSummaryCard(card));
 		stack.Children.Add(MakeBandCard("連絡先", BandContact, BodyContact,
 			MakeAddressRow(card.Address),
@@ -880,7 +888,6 @@ public partial class JSystemPage : ContentPage
 		stack.Children.Add(MakeBandCard("訪問情報", BandVisit, BodyVisit,
 			MakePlainField("作業担当", card.Worker),
 			MakePlainField("訪問希望", card.VisitRequested),
-			MakePlainField("依頼日", card.RequestDate),
 			MakePlainField("訪問予定", card.VisitScheduled)));
 		stack.Children.Add(MakeBandCard("依頼情報", BandRequest, BodyRequest,
 			MakeLongField("依頼先使用欄", card.RequestUseField),
@@ -943,7 +950,7 @@ public partial class JSystemPage : ContentPage
 		{
 			names.Children.Add(new Label
 			{
-				Text = DisplayValue(card.Furigana),
+				Text = DisplayFuriganaWithHonorific(card.Furigana),
 				FontSize = 15,
 				TextColor = Muted,
 				LineBreakMode = LineBreakMode.WordWrap,
@@ -1211,7 +1218,7 @@ public partial class JSystemPage : ContentPage
 			ColumnSpacing = 8
 		};
 		grid.Add(MakePlainField(leftLabel, leftValue, 17));
-		grid.Add(MakePlainField(rightLabel, FormatSlipNumber(rightValue), 17), 1, 0);
+		grid.Add(MakePlainField(rightLabel, rightValue, 17), 1, 0);
 		return grid;
 	}
 
@@ -1231,14 +1238,14 @@ public partial class JSystemPage : ContentPage
 		stack.Children.Add(new Label
 		{
 			Text = label,
-			FontSize = label is "受付No" or "伝票番号" ? 13 : 11,
+			FontSize = label is "受付No" or "伝票番号" or "依頼日" or "訪問確定日" ? 13 : 11,
 			TextColor = Muted,
 			HorizontalTextAlignment = align
 		});
 		stack.Children.Add(new Label
 		{
 			Text = DisplayValue(value),
-			FontSize = label is "受付No" or "伝票番号" ? valueSize : valueSize,
+			FontSize = valueSize,
 			FontAttributes = emphasize ? FontAttributes.Bold : FontAttributes.None,
 			TextColor = Ink,
 			HorizontalTextAlignment = align,
@@ -1685,6 +1692,22 @@ public partial class JSystemPage : ContentPage
 		var shown = DisplayValue(value);
 		if (shown == "---" || shown.EndsWith("様", StringComparison.Ordinal)) return shown;
 		return shown + " 様";
+	}
+
+	static string DisplayFuriganaWithHonorific(string? value)
+	{
+		var shown = DisplayValue(value);
+		if (shown == "---" || shown.EndsWith("サマ", StringComparison.Ordinal)
+			|| shown.EndsWith("ｻﾏ", StringComparison.Ordinal)) return shown;
+		return shown + " サマ";
+	}
+
+	static string FormatVisitConfirmed(string? value)
+	{
+		var shown = DisplayValue(value);
+		var time = Regex.Match(shown, @"\d{1,2}[:：]\d{2}|\d{1,2}時");
+		if (!time.Success || time.Index == 0) return shown;
+		return shown[..time.Index].TrimEnd() + "\n" + shown[time.Index..];
 	}
 
 	static bool TrySplitAddress(string address, out string postal, out string street, out string building)
