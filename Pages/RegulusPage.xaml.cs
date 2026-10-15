@@ -126,6 +126,7 @@ public partial class RegulusPage : ContentPage
 
 	void OnReceptionMessage(string payload)
 	{
+		if (TryHandleDayManifest(payload)) return;
 		if (payload == "none")
 		{
 			ShowStatus("受付番号が見つかりません");
@@ -141,6 +142,7 @@ public partial class RegulusPage : ContentPage
 			ShowStatus("顧客情報取得失敗");
 			return;
 		}
+		dayCachePanelOpen = false;
 		var token = ++requestToken;
 		ShowStatus("顧客情報を取得中...");
 		var page = JSystemPage.Current;
@@ -202,6 +204,8 @@ public partial class RegulusPage : ContentPage
 
 	void OnClosePanelClicked(object? sender, EventArgs e)
 	{
+		if (dayCacheRunning) CancelDayCache();
+		dayCachePanelOpen = false;
 		CustomerPanel.IsVisible = false;
 		HeaderReceptionLabel.Text = "";
 		_ = RegulusWeb.EvaluateJavaScriptAsync("['visit-detail','comment-dialog'].forEach(function(id){var d=document.getElementById(id);if(d)d.hidden=true;});");

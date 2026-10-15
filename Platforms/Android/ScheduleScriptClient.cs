@@ -9,6 +9,35 @@ sealed class ScheduleScriptClient : WebViewClient
 	const string OriginalFutureLine = "const end = addCalendarMonths(today, 2);";
 	const string PatchedStart = "const start = addCalendarMonths(today, -3);";
 	const string PatchedFuture = "const end = addCalendarMonths(today, 3);";
+	const string DayManifestScript = """
+
+window.__regulusReadDay = async function(date, token) {
+  const send = body => window.RegulusNative.postReception('day:' + JSON.stringify(body));
+  try {
+    if (!activeUser || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('not ready');
+    const parsed = parseSchedule(await readScheduleDay(date));
+    if (!parsed) throw new Error('no schedule');
+    const numbers = new Set();
+    let missing = 0;
+    const receptionOf = cell => {
+      const text = parseComments(cell && cell.comments).map(item => String(item.text || '')).join('\n');
+      const labeled = Array.from(new Set(Array.from(text.matchAll(/受付番号[：:]\s*([0-9]{8})(?!\d)/g), m => m[1])));
+      if (labeled.length) return labeled.length === 1 ? labeled[0] : '';
+      const plain = Array.from(new Set(Array.from(text.matchAll(/(?:^|\D)([0-9]{8})(?!\d)/g), m => m[1])));
+      return plain.length === 1 ? plain[0] : '';
+    };
+    parsed.people.forEach(person => {
+      for (let i = 2; i <= 6; i++) {
+        const cell = person.cells[i];
+        if (!cellText(cell).trim()) continue;
+        const no = receptionOf(cell);
+        if (/^[0-9]{8}$/.test(no)) numbers.add(no); else missing++;
+      }
+    });
+    send({token, date, numbers: Array.from(numbers), missing});
+  } catch (_) { send({token, date, error: true}); }
+};
+""";
 
 	static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
 	static readonly Dictionary<string, byte[]> Cache = new(StringComparer.Ordinal);
@@ -91,7 +120,7 @@ sealed class ScheduleScriptClient : WebViewClient
 				return null;
 			var patchedText = text
 				.Replace(StartLine, PatchedStart, StringComparison.Ordinal)
-				.Replace(OriginalFutureLine, PatchedFuture, StringComparison.Ordinal);
+				.Replace(OriginalFutureLine, PatchedFuture, StringComparison.Ordinal) + DayManifestScript;
 			var patched = System.Text.Encoding.UTF8.GetBytes(patchedText);
 			lock (Gate) Cache[url] = patched;
 			return patched;

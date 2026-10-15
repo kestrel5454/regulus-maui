@@ -12,6 +12,11 @@ public partial class App : Application
 
 	protected override Window CreateWindow(IActivationState? activationState)
 	{
-		return new Window(new AppShell());
+		var window = new Window(new AppShell());
+		window.Deactivated += (_, _) => JSystemPage.Current?.OnAppDeactivated();
+		window.Stopped += (_, _) => JSystemPage.Current?.OnAppDeactivated();
+		window.Activated += (_, _) => JSystemPage.Current?.OnAppActivated();
+		window.Resumed += (_, _) => JSystemPage.Current?.OnAppActivated();
+		return window;
 	}
 }

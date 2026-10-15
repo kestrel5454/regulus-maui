@@ -5,13 +5,25 @@
              Title="REGULUS"
              BackgroundColor="#EEF3F8">
 
-    <Grid BackgroundColor="#EEF3F8">
+    <Grid BackgroundColor="#EEF3F8" RowDefinitions="Auto,*">
+        <Button x:Name="DayFetchButton"
+                Text="1日分取得"
+                Clicked="OnOpenDayCacheClicked"
+                BackgroundColor="#0E5A8A"
+                TextColor="White"
+                FontSize="16"
+                FontAttributes="Bold"
+                CornerRadius="8"
+                MinimumHeightRequest="48"
+                Margin="10,6" />
         <WebView x:Name="RegulusWeb"
+                 Grid.Row="1"
                  Source="https://regulus-scheduler-95e3c.web.app/mobile-web/index.html"
                  Navigating="OnRegulusNavigating"
                  Navigated="OnRegulusNavigated" />
 
         <Grid x:Name="CustomerPanel"
+              Grid.Row="1"
               IsVisible="False"
               BackgroundColor="#EEF3F8"
               RowDefinitions="Auto,*">

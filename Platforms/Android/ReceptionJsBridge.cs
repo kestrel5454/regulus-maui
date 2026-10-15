@@ -17,7 +17,7 @@ public class ReceptionJsBridge : Java.Lang.Object
 	public void PostReception(string? payload)
 	{
 		var text = payload ?? "";
-		if (text.Length > 16) return;
+		if (text.Length > (text.StartsWith("day:", StringComparison.Ordinal) ? 65536 : 16)) return;
 		MainThread.BeginInvokeOnMainThread(() => onMessage(text));
 	}
 }

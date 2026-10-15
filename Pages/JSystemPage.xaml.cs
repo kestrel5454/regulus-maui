@@ -41,8 +41,6 @@ public partial class JSystemPage : ContentPage
 	bool loginInProgress;
 	int loginAttempts;
 	LoginPhase loginPhase;
-	string settledUrl = "";
-	bool suppressLoginNavigation;
 	int bridgeToken;
 	string bridgeNo = "";
 	bool bridgeResume;
@@ -111,19 +109,8 @@ public partial class JSystemPage : ContentPage
 
 	public void OpenForManualLogin()
 	{
-		if (loginPhase == LoginPhase.LoggedIn || JudgeLogin(currentUrl) == "ログイン済みらしい")
-		{
-			loginPhase = LoginPhase.LoggedIn;
-			SetSessionStatus("Jシステム：ログイン済み");
-			FillStatusLabel.Text = "自動ログイン：待機";
-			return;
-		}
-		loginAttempts = 0;
-		loginInProgress = false;
-		autoLoginArmed = true;
-		loginPhase = LoginPhase.LoggingIn;
-		SetSessionStatus("Jシステム：ログイン中...");
-		OpenUrl(LoginUrl, "読み込み中");
+		MarkRequestsForLogin(resetRetry: true);
+		BeginReLogin();
 	}
 
 	async Task StartupLoginAsync()
@@ -137,20 +124,9 @@ public partial class JSystemPage : ContentPage
 				SetSessionStatus("Jシステム：ログイン情報未設定");
 				return;
 			}
-		if (loginPhase == LoginPhase.LoggedIn || JudgeLogin(currentUrl) == "ログイン済みらしい")
-		{
-			loginPhase = LoginPhase.LoggedIn;
-			SetSessionStatus("Jシステム：ログイン済み");
-			return;
-		}
-		if (loginInProgress || loginPhase == LoginPhase.LoggingIn) return;
 			await MainThread.InvokeOnMainThreadAsync(() =>
 			{
-				EnsureWebViewHandler();
-				loginPhase = LoginPhase.LoggingIn;
-				SetSessionStatus("Jシステム：ログイン中...");
-				autoLoginArmed = true;
-				OpenUrl(LoginUrl, "読み込み中");
+				if (loginPhase != LoginPhase.LoggedIn) BeginReLogin();
 			});
 		}
 		catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -186,20 +162,12 @@ public partial class JSystemPage : ContentPage
 		base.OnAppearing();
 		ConfigureAndroidWebView();
 		UpdateArea();
-		if (loginPhase != LoginPhase.LoggedIn) return;
-		suppressLoginNavigation = true;
-		KeepLoggedInPage();
-		Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(700), () => suppressLoginNavigation = false);
 	}
 
 	protected override void OnHandlerChanged()
 	{
 		base.OnHandlerChanged();
 		ConfigureAndroidWebView();
-		if (loginPhase != LoginPhase.LoggedIn) return;
-		suppressLoginNavigation = true;
-		KeepLoggedInPage();
-		Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(700), () => suppressLoginNavigation = false);
 	}
 
 	void ConfigureAndroidWebView()
@@ -208,6 +176,7 @@ public partial class JSystemPage : ContentPage
 		if (JWeb.Handler?.PlatformView is not Android.Webkit.WebView native) return;
 		native.SetBackgroundColor(Android.Graphics.Color.White);
 		if (native.Settings == null) return;
+		native.Settings.CacheMode = Android.Webkit.CacheModes.NoCache;
 		native.Settings.JavaScriptEnabled = true;
 		native.Settings.DomStorageEnabled = true;
 #endif
@@ -227,7 +196,10 @@ public partial class JSystemPage : ContentPage
 			return;
 		}
 		ResultLabel.Text = "顧客ページの読み込みを開始しました";
-		OpenUrl(CustomerUrlPrefix + no, "顧客ページ読み込み中");
+		pendingCustomerUrl = CustomerUrlPrefix + no;
+		pendingCustomerRetried = false;
+		if (!EnsureSessionForRequest()) return;
+		OpenUrl(pendingCustomerUrl, "顧客ページ読み込み中");
 	}
 
 	void OpenUrl(string url, string loadingState)
@@ -247,40 +219,15 @@ public partial class JSystemPage : ContentPage
 
 	void OnWebNavigating(object? sender, WebNavigatingEventArgs e)
 	{
-		if (suppressLoginNavigation && loginPhase == LoginPhase.LoggedIn && IsLoginUrl(e.Url))
-		{
-			e.Cancel = true;
-			KeepLoggedInPage();
-			return;
-		}
+		navigationGeneration++;
 		if (viewState is not ("顧客ページ読み込み中" or "検索ページ読み込み中" or "検索結果読み込み中" or "検索詳細読み込み中" or "過去検索読み込み中" or "過去検索結果読み込み中" or "過去案件読み込み中"))
 			viewState = "読み込み中";
 		LoadStateLabel.Text = "Jシステム状態：" + viewState;
 	}
 
-	void KeepLoggedInPage()
+	async void OnWebNavigated(object? sender, WebNavigatedEventArgs e)
 	{
-		if (loginPhase != LoginPhase.LoggedIn) return;
-		if (string.IsNullOrEmpty(settledUrl) || IsLoginUrl(settledUrl)) return;
-		var sourceUrl = (JWeb.Source as UrlWebViewSource)?.Url ?? "";
-		if (!IsLoginUrl(sourceUrl) && !IsLoginUrl(currentUrl)) return;
-		if (string.Equals(sourceUrl, settledUrl, StringComparison.OrdinalIgnoreCase)) return;
-		try
-		{
-			JWeb.Source = settledUrl;
-		}
-		catch (Exception ex) when (ex is not OutOfMemoryException)
-		{
-		}
-	}
-
-	static bool IsLoginUrl(string? url)
-	{
-		return JudgeLogin(url ?? "") == "ログイン画面";
-	}
-
-	void OnWebNavigated(object? sender, WebNavigatedEventArgs e)
-	{
+		if (appInactive) return;
 		currentUrl = e.Url ?? "";
 		CurrentUrlLabel.Text = "現在URL：" + UrlPrivacy.ForDisplay(currentUrl);
 		if (e.Result == WebNavigationResult.Success)
@@ -295,12 +242,45 @@ public partial class JSystemPage : ContentPage
 			viewState = "表示完了";
 			LoadStateLabel.Text = "Jシステム状態：表示完了";
 			var login = JudgeLogin(currentUrl);
+			var generation = navigationGeneration;
+			if (login == "ログイン済みらしい")
+			{
+				var eval = await EvaluateAsync(DocumentSessionScript);
+				if (generation != navigationGeneration || appInactive) return;
+				var code = UnwrapJsString(eval.Raw) ?? "";
+				if (eval.TimedOut || eval.Failed || (code != "in" && code != "login"))
+				{
+					if (!TryRecoverSession()) ShowLoadFailure("認証状態を確認できませんでした");
+					return;
+				}
+				if (code == "login")
+				{
+					HandleExpiredDocument();
+					return;
+				}
+			}
 			LoginStateLabel.Text = "ログイン状態：" + login;
 			if (login == "ログイン済みらしい")
 			{
-				if (loginPhase == LoginPhase.LoggedIn && !IsLoginUrl(currentUrl))
-					settledUrl = currentUrl;
-				if (customerReadPending && bridgeActive && IsCustomerDetailPage(currentUrl)
+				ConfirmSession();
+				if (searchActive && searchNeedsResume)
+					TryResumeSearch();
+				else if (detailActive && detailNeedsResume)
+					TryResumeDetail();
+				else if (bridgeActive && bridgeResume)
+					TryResumeBridge();
+				else if (pendingCustomerUrl.Length > 0)
+				{
+					if (IsCustomerDetailPage(currentUrl)
+						&& currentUrl.Contains("no=" + pendingCustomerUrl[CustomerUrlPrefix.Length..], StringComparison.Ordinal))
+						pendingCustomerUrl = "";
+					else
+					{
+						pendingCustomerRetried = true;
+						OpenUrl(pendingCustomerUrl, "顧客ページ読み込み中");
+					}
+				}
+				else if (customerReadPending && bridgeActive && IsCustomerDetailPage(currentUrl)
 					&& currentUrl.Contains("no=" + bridgeNo, StringComparison.Ordinal))
 					_ = FinishBridgeReadAsync(bridgeToken, bridgeNo);
 				else if (searchFormPending && searchActive && IsSearchReceptionPage(currentUrl))
@@ -315,17 +295,14 @@ public partial class JSystemPage : ContentPage
 					_ = FinishBridgeSearchAsync();
 				else if (archiveDetailPending && bridgeActive && bridgeStage == BridgeStage.ArchiveDetail && IsSameHistoryDetail(currentUrl, bridgeArchiveUrl))
 					_ = FinishBridgeHistoryAsync();
-				else if (searchActive && searchNeedsResume)
-					TryResumeSearch();
-				else if (detailActive && detailNeedsResume)
-					TryResumeDetail();
-				else if (bridgeActive && bridgeResume)
-					TryResumeBridge();
-				else if (!searchActive && !detailActive && !bridgeActive)
-					_ = ConfirmSessionAsync();
 			}
 			else if (login == "ログイン画面")
 			{
+				if (pendingCustomerUrl.Length > 0 && pendingCustomerRetried)
+				{
+					pendingCustomerUrl = "";
+					ResultLabel.Text = "顧客ページを読み込めませんでした";
+				}
 				if (bridgeActive)
 				{
 					if (bridgeResumeConsumed) ReportBridge(bridgeToken, "fail", null);
@@ -341,13 +318,11 @@ public partial class JSystemPage : ContentPage
 					if (detailResumedOnce) ReportDetail(detailToken, "fail", null);
 					else detailNeedsResume = true;
 				}
-				if (loginPhase == LoginPhase.LoggedIn && suppressLoginNavigation)
+				if (loginPhase != LoginPhase.LoggingIn)
 				{
-					KeepLoggedInPage();
-					return;
-				}
-				if (loginPhase == LoginPhase.LoggedIn)
 					loginAttempts = 0;
+					ArmLoginTimeout();
+				}
 				loginPhase = LoginPhase.LoggingIn;
 				QueueAutoLogin();
 			}
@@ -358,10 +333,19 @@ public partial class JSystemPage : ContentPage
 
 	void ShowLoadFailure(string detail)
 	{
+		if (appInactive) return;
+		if (loginPhase == LoginPhase.LoggingIn)
+		{
+			if (TryRetryLoginNavigation()) return;
+			loginPhase = LoginPhase.Failed;
+			SetSessionStatus("Jシステム：ログイン失敗");
+		}
+		else if (TryRecoverSession()) return;
 		viewState = "読み込み失敗";
 		LoadStateLabel.Text = "Jシステム状態：読み込み失敗";
 		LoginStateLabel.Text = "ログイン状態：判定不能";
 		ResultLabel.Text = "エラー内容：" + detail;
+		FailPendingRequests();
 	}
 
 	void OnWebSizeChanged(object? sender, EventArgs e)
@@ -1409,18 +1393,21 @@ public partial class JSystemPage : ContentPage
 			},
 			ColumnSpacing = 8,
 			Padding = new Thickness(0, 3),
-			MinimumHeightRequest = 40
+			MinimumHeightRequest = phone ? 48 : 40
 		};
+		// Let the row receive taps even when a label or nested layout is under the finger.
+		text.InputTransparent = true;
 		grid.Add(new Label
 		{
 			Text = icon,
+			InputTransparent = true,
 			FontSize = 18,
 			TextColor = Ink,
 			VerticalOptions = LayoutOptions.Center,
 			WidthRequest = 22
 		});
 		grid.Add(text, 1, 0);
-		var trail = new HorizontalStackLayout { Spacing = 6, VerticalOptions = LayoutOptions.Center };
+		var trail = new HorizontalStackLayout { Spacing = 6, VerticalOptions = LayoutOptions.Center, InputTransparent = true };
 		if (actionable)
 		{
 			trail.Children.Add(new Label
@@ -1923,7 +1910,7 @@ public partial class JSystemPage : ContentPage
 			MainThread.BeginInvokeOnMainThread(QueueAutoLogin);
 			return;
 		}
-		if (loginPhase == LoginPhase.LoggedIn) return;
+		if (appInactive || loginPhase == LoginPhase.LoggedIn) return;
 		if (loginInProgress) return;
 		if (loginAttempts >= MaxLoginAttempts)
 		{
@@ -1940,34 +1927,26 @@ public partial class JSystemPage : ContentPage
 		loginInProgress = true;
 		loginPhase = LoginPhase.LoggingIn;
 		SetSessionStatus("Jシステム：ログイン中...");
-		_ = AutoFillLoginAsync();
-	}
-
-	async Task ConfirmSessionAsync()
-	{
-		var eval = await EvaluateAsync("(function(){var nodes=document.querySelectorAll('input[type=\"password\"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(el&&(el.offsetParent!==null||el.getClientRects().length>0))return 'form';}return 'in';})()");
-		var code = UnwrapJsString(eval.Raw) ?? "";
-		if (!eval.TimedOut && !eval.Failed && code == "form") return;
-		await MainThread.InvokeOnMainThreadAsync(() =>
-		{
-			loginAttempts = 0;
-			loginInProgress = false;
-			autoLoginArmed = true;
-			loginPhase = LoginPhase.LoggedIn;
-			if (!IsLoginUrl(currentUrl)) settledUrl = currentUrl;
-			if (FillStatusLabel.Text.Contains("ログイン送信", StringComparison.Ordinal))
-				FillStatusLabel.Text = "自動ログイン：成功らしい";
-			LoginStateLabel.Text = "ログイン状態：ログイン済みらしい";
-			SessionStatusLabel.Text = "Jシステム：ログイン済み";
-			TryResumeBridge();
-			TryResumeSearch();
-			TryResumeDetail();
-		});
+		_ = AutoFillLoginAsync(sessionGeneration);
 	}
 
 	public void ReadFromRegulus(string receptionNo, int token, Action<int, string, CustomerCard?> callback)
 	{
-		if (receptionNo.Length != 8) return;
+		if (receptionNo.Length != 8 || !receptionNo.All(char.IsAsciiDigit))
+		{
+			callback(token, "fail", null);
+			return;
+		}
+		if (customerMemoryCache.TryGetValue(receptionNo, out var cached))
+		{
+			callback(token, "ok", cached);
+			return;
+		}
+		if (bridgeActive || searchActive || detailActive)
+		{
+			callback(token, "busy", null);
+			return;
+		}
 		bridgeToken = token;
 		bridgeNo = receptionNo;
 		bridgeCallback = callback;
@@ -1976,17 +1955,11 @@ public partial class JSystemPage : ContentPage
 		bridgeResumeConsumed = false;
 		bridgeArchiveUrl = "";
 		ArmBridgeTimeout(token, 15);
-		if (loginPhase == LoginPhase.LoggedIn || JudgeLogin(currentUrl) == "ログイン済みらしい")
+		if (EnsureSessionForRequest())
 		{
 			bridgeResume = false;
 			OpenUrl(CustomerUrlPrefix + receptionNo, "顧客ページ読み込み中");
-			return;
 		}
-		bridgeResume = true;
-		if (loginPhase == LoginPhase.LoggingIn || IsLoginUrl(currentUrl)) return;
-		bridgeActive = false;
-		bridgeResume = false;
-		callback(token, "fail", null);
 	}
 
 	public View CreateSharedCustomerView(CustomerCard card)
@@ -1998,6 +1971,7 @@ public partial class JSystemPage : ContentPage
 
 	public void BeginReceptionSearch(int token, string receptionNo, string customerName, string tel, string pointCardNo, string slipNo, Action<int, string, IReadOnlyList<SearchHit>?> callback)
 	{
+		if (bridgeActive) { callback(token, "busy", null); return; }
 		searchToken = token;
 		searchActive = true;
 		searchCallback = callback;
@@ -2014,13 +1988,7 @@ public partial class JSystemPage : ContentPage
 		searchResumedOnce = false;
 		ArmSearchTimeout(token);
 		EnsureWebViewHandler();
-		if (loginPhase != LoginPhase.LoggedIn && JudgeLogin(currentUrl) != "ログイン済みらしい")
-		{
-			searchNeedsResume = true;
-			if (loginPhase == LoginPhase.LoggingIn || IsLoginUrl(currentUrl)) return;
-			ReportSearch(token, "fail", null);
-			return;
-		}
+		if (!EnsureSessionForRequest()) return;
 		if (IsSearchReceptionPage(currentUrl))
 		{
 			viewState = "検索ページ読み込み中";
@@ -2032,6 +2000,7 @@ public partial class JSystemPage : ContentPage
 
 	public void OpenHistoryDetail(int token, string detailUrl, Action<int, string, CustomerCard?> callback)
 	{
+		if (bridgeActive) { callback(token, "busy", null); return; }
 		detailToken = token;
 		detailCallback = callback;
 		detailActive = true;
@@ -2047,39 +2016,40 @@ public partial class JSystemPage : ContentPage
 		detailTarget = normalized;
 		ArmDetailTimeout(token);
 		EnsureWebViewHandler();
-		if (loginPhase != LoginPhase.LoggedIn && JudgeLogin(currentUrl) != "ログイン済みらしい")
-		{
-			detailNeedsResume = true;
-			if (loginPhase == LoginPhase.LoggingIn || IsLoginUrl(currentUrl)) return;
-			ReportDetail(token, "fail", null);
-			return;
-		}
+		if (!EnsureSessionForRequest()) return;
 		OpenUrl(detailTarget, "検索詳細読み込み中");
 	}
 
 	async Task SubmitReceptionSearchAsync()
 	{
+		var generation = navigationGeneration;
 		var token = searchToken;
 		if (!searchActive || token != searchToken) return;
 		viewState = "検索結果読み込み中";
 		var script = BuildSearchSubmitScript(searchReception, searchName, searchTel, searchPoint, searchSlip);
 		var eval = await EvaluateAsync(script);
+		if (generation != navigationGeneration || appInactive) return;
 		if (!searchActive || token != searchToken) return;
 		var code = UnwrapJsString(eval.Raw) ?? "";
-		if (!eval.TimedOut && !eval.Failed && code == "no-form")
-			ReportSearch(token, "fail", null);
+		if (eval.TimedOut || eval.Failed || code == "no-form")
+		{
+			if (!TryRecoverSession()) ReportSearch(token, "fail", null);
+		}
 	}
 
 	async Task FinishReceptionSearchAsync()
 	{
+		var generation = navigationGeneration;
 		var token = searchToken;
 		await WaitUntilReadyAsync(() => searchActive && token == searchToken);
+		if (generation != navigationGeneration || appInactive) return;
 		if (!searchActive || token != searchToken) return;
 		var eval = await EvaluateAsync(BuildSearchReadScript());
+		if (generation != navigationGeneration || appInactive) return;
 		if (!searchActive || token != searchToken) return;
 		if (eval.TimedOut || eval.Failed || !TryBindSearchHits(eval.Raw, out var hits))
 		{
-			ReportSearch(token, "fail", null);
+			if (!TryRecoverSession()) ReportSearch(token, "fail", null);
 			return;
 		}
 		ReportSearch(token, "ok", hits);
@@ -2087,14 +2057,17 @@ public partial class JSystemPage : ContentPage
 
 	async Task FinishHistoryDetailAsync()
 	{
+		var generation = navigationGeneration;
 		var token = detailToken;
 		await WaitUntilReadyAsync(() => detailActive && token == detailToken);
+		if (generation != navigationGeneration || appInactive) return;
 		if (!detailActive || token != detailToken) return;
 		var eval = await EvaluateAsync(BuildCustomerReadScript());
+		if (generation != navigationGeneration || appInactive) return;
 		if (!detailActive || token != detailToken) return;
-		if (eval.TimedOut || eval.Failed || !TryBindCustomer(eval.Raw, out var card) || card == null)
+		if (eval.TimedOut || eval.Failed || !TryBindCustomer(eval.Raw, out var card) || card == null || !HasAnyDetail(card))
 		{
-			ReportDetail(token, "fail", null);
+			if (!TryRecoverSession()) ReportDetail(token, "fail", null);
 			return;
 		}
 		ReportDetail(token, "ok", card);
@@ -2146,14 +2119,15 @@ public partial class JSystemPage : ContentPage
 
 	void ArmSearchTimeout(int token)
 	{
+		var generation = ++searchTimeoutGeneration;
 		searchTimeoutToken = token;
 		_ = Task.Run(async () =>
 		{
 			await Task.Delay(TimeSpan.FromSeconds(15));
 			await MainThread.InvokeOnMainThreadAsync(() =>
 			{
-				if (searchTimeoutToken != token) return;
-				if (loginPhase == LoginPhase.LoggingIn && searchNeedsResume)
+				if (generation != searchTimeoutGeneration || searchTimeoutToken != token) return;
+				if (appInactive || (loginPhase == LoginPhase.LoggingIn && searchNeedsResume))
 				{
 					ArmSearchTimeout(token);
 					return;
@@ -2165,14 +2139,15 @@ public partial class JSystemPage : ContentPage
 
 	void ArmDetailTimeout(int token)
 	{
+		var generation = ++detailTimeoutGeneration;
 		detailTimeoutToken = token;
 		_ = Task.Run(async () =>
 		{
 			await Task.Delay(TimeSpan.FromSeconds(10));
 			await MainThread.InvokeOnMainThreadAsync(() =>
 			{
-				if (detailTimeoutToken != token) return;
-				if (loginPhase == LoginPhase.LoggingIn && detailNeedsResume)
+				if (generation != detailTimeoutGeneration || detailTimeoutToken != token) return;
+				if (appInactive || (loginPhase == LoginPhase.LoggingIn && detailNeedsResume))
 				{
 					ArmDetailTimeout(token);
 					return;
@@ -2288,7 +2263,7 @@ return 'ok';
 		if (!bridgeActive || !bridgeResume || bridgeNo.Length != 8) return;
 		bridgeResume = false;
 		bridgeResumeConsumed = true;
-		NoteSessionRestored();
+		ArmBridgeTimeout(bridgeToken, bridgeStage == BridgeStage.ArchiveSearch ? 25 : 15);
 		if (bridgeStage == BridgeStage.ArchiveDetail && bridgeArchiveUrl.Length > 0)
 		{
 			OpenUrl(bridgeArchiveUrl, "過去案件読み込み中");
@@ -2313,7 +2288,7 @@ return 'ok';
 		if (!searchActive || !searchNeedsResume || searchResumedOnce) return;
 		searchNeedsResume = false;
 		searchResumedOnce = true;
-		NoteSessionRestored();
+		ArmSearchTimeout(searchToken);
 		if (IsSearchReceptionPage(currentUrl))
 		{
 			viewState = "検索ページ読み込み中";
@@ -2328,19 +2303,8 @@ return 'ok';
 		if (!detailActive || !detailNeedsResume || detailResumedOnce || detailTarget.Length == 0) return;
 		detailNeedsResume = false;
 		detailResumedOnce = true;
-		NoteSessionRestored();
+		ArmDetailTimeout(detailToken);
 		OpenUrl(detailTarget, "検索詳細読み込み中");
-	}
-
-	void NoteSessionRestored()
-	{
-		if (loginPhase == LoginPhase.LoggedIn) return;
-		loginAttempts = 0;
-		loginInProgress = false;
-		autoLoginArmed = true;
-		loginPhase = LoginPhase.LoggedIn;
-		if (!IsLoginUrl(currentUrl)) settledUrl = currentUrl;
-		SessionStatusLabel.Text = "Jシステム：ログイン済み";
 	}
 
 	static string NormalizeDetailPath(string raw)
@@ -2362,7 +2326,10 @@ return 'ok';
 		bridgeActive = false;
 		bridgeResume = false;
 		bridgeTimeoutToken = 0;
-		bridgeCallback?.Invoke(token, status, card);
+		if (status == "ok" && card != null) customerMemoryCache[bridgeNo] = card;
+		var callback = bridgeCallback;
+		bridgeCallback = null;
+		callback?.Invoke(token, status, card);
 	}
 
 	void ArmBridgeTimeout(int token, int seconds)
@@ -2375,7 +2342,7 @@ return 'ok';
 			await MainThread.InvokeOnMainThreadAsync(() =>
 			{
 				if (generation != bridgeTimeoutGeneration || bridgeTimeoutToken != token) return;
-				if (loginPhase == LoginPhase.LoggingIn && bridgeResume)
+				if (appInactive || (loginPhase == LoginPhase.LoggingIn && bridgeResume))
 				{
 					ArmBridgeTimeout(token, seconds);
 					return;
@@ -2387,7 +2354,9 @@ return 'ok';
 
 	async Task FinishBridgeReadAsync(int token, string receptionNo)
 	{
+		var generation = navigationGeneration;
 		await WaitForCustomerDocumentAsync(token);
+		if (generation != navigationGeneration || appInactive) return;
 		if (token != bridgeToken || !bridgeActive) return;
 		if (!currentUrl.Contains("no=" + receptionNo, StringComparison.Ordinal) || !IsCustomerDetailPage(currentUrl))
 		{
@@ -2395,12 +2364,14 @@ return 'ok';
 			return;
 		}
 		var eval = await EvaluateAsync(BuildCustomerReadScript());
+		if (generation != navigationGeneration || appInactive) return;
 		if (token != bridgeToken || !bridgeActive) return;
 		if (!eval.TimedOut && !eval.Failed && TryBindCustomer(eval.Raw, out var card) && card != null && IsCurrentCase(card, receptionNo))
 		{
 			await MainThread.InvokeOnMainThreadAsync(() => ReportBridge(token, "ok", card));
 			return;
 		}
+		if ((eval.TimedOut || eval.Failed) && TryRecoverSession()) return;
 		BeginArchiveSearch(token);
 	}
 
@@ -2431,13 +2402,7 @@ return 'ok';
 		bridgeResume = false;
 		bridgeResumeConsumed = false;
 		ArmBridgeTimeout(token, 25);
-		if (loginPhase != LoginPhase.LoggedIn && JudgeLogin(currentUrl) != "ログイン済みらしい")
-		{
-			bridgeResume = true;
-			if (loginPhase == LoginPhase.LoggingIn || IsLoginUrl(currentUrl)) return;
-			ReportBridge(token, "fail", null);
-			return;
-		}
+		if (!EnsureSessionForRequest()) return;
 		if (IsSearchReceptionPage(currentUrl))
 		{
 			viewState = "過去検索読み込み中";
@@ -2449,26 +2414,33 @@ return 'ok';
 
 	async Task SubmitBridgeSearchAsync()
 	{
+		var generation = navigationGeneration;
 		var token = bridgeToken;
 		if (!bridgeActive || token != bridgeToken || bridgeStage != BridgeStage.ArchiveSearch) return;
 		viewState = "過去検索結果読み込み中";
 		var eval = await EvaluateAsync(BuildSearchSubmitScript(bridgeNo, "", "", "", ""));
+		if (generation != navigationGeneration || appInactive) return;
 		if (!bridgeActive || token != bridgeToken) return;
 		var code = UnwrapJsString(eval.Raw) ?? "";
-		if (!eval.TimedOut && !eval.Failed && code == "no-form")
-			ReportBridge(token, "fail", null);
+		if (eval.TimedOut || eval.Failed || code == "no-form")
+		{
+			if (!TryRecoverSession()) ReportBridge(token, "fail", null);
+		}
 	}
 
 	async Task FinishBridgeSearchAsync()
 	{
+		var generation = navigationGeneration;
 		var token = bridgeToken;
 		await WaitUntilReadyAsync(() => bridgeActive && token == bridgeToken && bridgeStage == BridgeStage.ArchiveSearch);
+		if (generation != navigationGeneration || appInactive) return;
 		if (!bridgeActive || token != bridgeToken) return;
 		var eval = await EvaluateAsync(BuildSearchReadScript());
+		if (generation != navigationGeneration || appInactive) return;
 		if (!bridgeActive || token != bridgeToken) return;
 		if (eval.TimedOut || eval.Failed || !TryBindSearchHits(eval.Raw, out var hits))
 		{
-			await MainThread.InvokeOnMainThreadAsync(() => ReportBridge(token, "fail", null));
+			if (!TryRecoverSession()) ReportBridge(token, "fail", null);
 			return;
 		}
 		var path = PickArchivePath(hits, bridgeNo);
@@ -2510,26 +2482,23 @@ return 'ok';
 		bridgeResume = false;
 		bridgeResumeConsumed = false;
 		ArmBridgeTimeout(token, 15);
-		if (loginPhase != LoginPhase.LoggedIn && JudgeLogin(currentUrl) != "ログイン済みらしい")
-		{
-			bridgeResume = true;
-			if (loginPhase == LoginPhase.LoggingIn || IsLoginUrl(currentUrl)) return;
-			ReportBridge(token, "fail", null);
-			return;
-		}
+		if (!EnsureSessionForRequest()) return;
 		OpenUrl(normalized, "過去案件読み込み中");
 	}
 
 	async Task FinishBridgeHistoryAsync()
 	{
+		var generation = navigationGeneration;
 		var token = bridgeToken;
 		await WaitUntilReadyAsync(() => bridgeActive && token == bridgeToken && bridgeStage == BridgeStage.ArchiveDetail);
+		if (generation != navigationGeneration || appInactive) return;
 		if (!bridgeActive || token != bridgeToken) return;
 		var eval = await EvaluateAsync(BuildCustomerReadScript());
+		if (generation != navigationGeneration || appInactive) return;
 		if (!bridgeActive || token != bridgeToken) return;
 		if (eval.TimedOut || eval.Failed || !TryBindCustomer(eval.Raw, out var card) || card == null || !HasAnyDetail(card))
 		{
-			await MainThread.InvokeOnMainThreadAsync(() => ReportBridge(token, "fail", null));
+			if (!TryRecoverSession()) ReportBridge(token, "fail", null);
 			return;
 		}
 		await MainThread.InvokeOnMainThreadAsync(() => ReportBridge(token, "ok", card));
@@ -2571,12 +2540,13 @@ return 'ok';
 		MainThread.BeginInvokeOnMainThread(() => SessionStatusLabel.Text = text);
 	}
 
-	async Task AutoFillLoginAsync()
+	async Task AutoFillLoginAsync(int generation)
 	{
 		var missingCredentials = false;
 		try
 		{
 			var stored = await JSystemCredentialStore.LoadAsync();
+			if (generation != sessionGeneration || appInactive) return;
 			if (string.IsNullOrEmpty(stored.UserId) || string.IsNullOrEmpty(stored.Password))
 			{
 				missingCredentials = true;
@@ -2585,12 +2555,12 @@ return 'ok';
 				SetSessionStatus("Jシステム：ログイン情報未設定");
 				return;
 			}
-			if (JudgeLogin(currentUrl) != "ログイン画面") return;
+			if (generation != sessionGeneration || appInactive || JudgeLogin(currentUrl) != "ログイン画面") return;
 			await Task.Delay(50);
-			if (JudgeLogin(currentUrl) != "ログイン画面") return;
+			if (generation != sessionGeneration || appInactive || JudgeLogin(currentUrl) != "ログイン画面") return;
 			ConfigureAndroidWebView();
 			var eval = await EvaluateAsync(BuildFillScript(stored.UserId, stored.Password));
-			if (JudgeLogin(currentUrl) != "ログイン画面") return;
+			if (generation != sessionGeneration || appInactive || JudgeLogin(currentUrl) != "ログイン画面") return;
 			if (eval.TimedOut)
 			{
 				FillStatusLabel.Text = "自動ログイン：失敗\n理由：タイムアウト";
@@ -2609,7 +2579,7 @@ return 'ok';
 			if (code == "ok")
 			{
 				FillStatusLabel.Text = "自動ログイン：ID/PW入力成功";
-				await SubmitLoginAsync();
+				await SubmitLoginAsync(generation);
 				return;
 			}
 			FillStatusLabel.Text = "自動ログイン：失敗\n理由：ログイン入力欄を特定できません";
@@ -2618,21 +2588,30 @@ return 'ok';
 		}
 		catch (Exception ex)
 		{
+			if (generation != sessionGeneration || appInactive) return;
 			FillStatusLabel.Text = "自動ログイン：失敗\n例外：" + ex.GetType().Name;
 			loginPhase = LoginPhase.Failed;
 			SetSessionStatus("Jシステム：ログイン失敗");
 		}
 		finally
 		{
-			loginInProgress = false;
-			if (missingCredentials) loginAttempts = MaxLoginAttempts;
-			else _ = RetryIfStillOnLoginAsync();
+			if (generation == sessionGeneration)
+			{
+				loginInProgress = false;
+				if (missingCredentials)
+				{
+					loginAttempts = MaxLoginAttempts;
+					FailPendingRequests();
+				}
+				else if (!appInactive) _ = RetryIfStillOnLoginAsync(generation);
+			}
 		}
 	}
 
-	async Task RetryIfStillOnLoginAsync()
+	async Task RetryIfStillOnLoginAsync(int generation)
 	{
 		await Task.Delay(800);
+		if (generation != sessionGeneration || appInactive) return;
 		if (loginPhase == LoginPhase.LoggedIn) return;
 		if (loginInProgress || JudgeLogin(currentUrl) != "ログイン画面") return;
 		if (loginAttempts >= MaxLoginAttempts)
@@ -2684,12 +2663,13 @@ return 'ok';
 })()";
 	}
 
-	async Task SubmitLoginAsync()
+	async Task SubmitLoginAsync(int generation)
 	{
-		if (!autoLoginArmed || JudgeLogin(currentUrl) != "ログイン画面") return;
+		if (generation != sessionGeneration || appInactive || !autoLoginArmed || JudgeLogin(currentUrl) != "ログイン画面") return;
 		autoLoginArmed = false;
 		FillStatusLabel.Text = "自動ログイン：ログイン送信";
 		var eval = await EvaluateAsync(BuildSubmitScript());
+		if (generation != sessionGeneration || appInactive) return;
 		if (JudgeLogin(currentUrl) != "ログイン画面" && !eval.TimedOut && !eval.Failed) return;
 		var code = UnwrapJsString(eval.Raw) ?? "";
 		if (eval.TimedOut)
