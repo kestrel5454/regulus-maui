@@ -19,6 +19,6 @@ public partial class AppShell : Shell
 	protected override void OnAppearing()
 	{
 		base.OnAppearing();
-		jSystemPage.BeginStartupLogin();
+		if (!Services.EmergencyCustomerSettings.Enabled) jSystemPage.BeginStartupLogin();
 	}
 }

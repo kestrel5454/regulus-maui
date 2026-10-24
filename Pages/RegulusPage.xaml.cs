@@ -23,6 +23,16 @@ public partial class RegulusPage : ContentPage
 	{
 		base.OnAppearing();
 		pageVisible = true;
+		var enabled = Services.EmergencyCustomerSettings.Enabled;
+		if (emergencyMode != enabled)
+		{
+			emergencyMode = enabled;
+			++requestToken;
+			if (dayCacheRunning) CancelDayCache();
+			CustomerPanel.IsVisible = false;
+			RegulusCustomerStack.Children.Clear();
+		}
+		_ = PublishEmergencyModeAsync();
 		if (!initialRefreshRequested)
 		{
 			initialRefreshRequested = true;
@@ -126,12 +136,22 @@ public partial class RegulusPage : ContentPage
 
 	async Task RestoreBridgeAsync()
 	{
+		await PublishEmergencyModeAsync();
 		await RegulusWeb.EvaluateJavaScriptAsync(BridgeScript);
 		await PublishDayCacheAsync();
 	}
 
 	void OnReceptionMessage(string payload)
 	{
+		if (Services.EmergencyCustomerSettings.Enabled)
+		{
+			if (payload.StartsWith("emergency:", StringComparison.Ordinal)) ReadEmergencyCustomer(payload);
+			else if (payload == "day-fetch") ShowStatus("緊急措置中はカードを開いて2つ目のコメントから顧客詳細を表示してください");
+			else if (!payload.StartsWith("day:", StringComparison.Ordinal))
+				ShowStatus("緊急措置設定を反映しています。もう一度カードを開いてください");
+			return;
+		}
+		if (payload.StartsWith("emergency:", StringComparison.Ordinal)) return;
 		if (payload == "day-fetch")
 		{
 			if (dayCacheRunning) CancelDayCache();
@@ -281,7 +301,13 @@ if(nums.length===1) return 'ok';
 if(nums.length>1) return 'ambiguous';
 return 'none';
 }
-function post(kind,text){
+function post(kind,text,container){
+if(window.__regulusEmergency){
+var bodies=container?container.querySelectorAll('.comment-item .comment-body'):[];
+var body={number:bodies.length?pick(textOf(bodies[0])):'',text:bodies.length>1?textOf(bodies[1]):''};
+try{if(window.RegulusNative&&RegulusNative.postReception)RegulusNative.postReception('emergency:'+JSON.stringify(body));}catch(e){}
+return;
+}
 var state=codeOf(text);
 var body=state==='ok'?(kind+':'+pick(text)):state;
 try{if(window.RegulusNative&&RegulusNative.postReception) RegulusNative.postReception(body);}catch(e){}
@@ -395,7 +421,7 @@ var customer=scheduleCustomerButton(t);
 if(customer){
 ev.preventDefault();
 ev.stopPropagation();
-setTimeout(function(){post('s',textOf(document.getElementById('edit-comment-list')));},0);
+setTimeout(function(){var list=document.getElementById('edit-comment-list');post('s',textOf(list),list);},0);
 return;
 }
 if(visit&&!visit.classList.contains('is-empty')&&visit.closest('#visit-cards')){
@@ -405,13 +431,13 @@ setTimeout(function(){
 if(window.__regulusVisitStamp!==stamp) return;
 var text=visitReceptionText();
 hideVisit();
-post('v',text);
+post('v',text,document.getElementById('visit-detail-comments'));
 },0);
 return;
 }
 var comment=t.closest('#edit-comment-list,#comment-list');
 if(!comment) return;
-setTimeout(function(){post('s',textOf(comment));},0);
+setTimeout(function(){post('s',textOf(comment),comment);},0);
 }
 document.addEventListener('touchend',handleCustomerBridge,true);
 document.addEventListener('click',handleCustomerBridge,true);

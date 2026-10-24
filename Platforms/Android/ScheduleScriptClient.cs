@@ -38,6 +38,7 @@ const regulusCached = new Set();
 const regulusToolbar = document.createElement('div');
 regulusToolbar.id = 'regulus-day-cache';
 const regulusFetch = document.createElement('button');
+regulusFetch.id = 'regulus-day-fetch';
 regulusFetch.type = 'button';
 regulusFetch.textContent = '1日分取得';
 regulusFetch.style.cssText = 'background:#0e5a8a;color:white;border:0;border-radius:10px;padding:8px 10px;font-size:16px;font-weight:bold;min-height:44px;width:100%;min-width:0;box-sizing:border-box';

@@ -870,7 +870,7 @@ public partial class JSystemPage : ContentPage
 		return header + body.ToString();
 	}
 
-	void AddCustomerSections(Layout stack, CustomerCard card)
+	void AddCustomerSections(Layout stack, CustomerCard card, bool includeCharges = true)
 	{
 		var priority = card.PromiseDetails;
 		stack.Children.Add(MakeBandCard("基本情報", BandBasic, BodyBasic,
@@ -881,7 +881,7 @@ public partial class JSystemPage : ContentPage
 			MakeAddressRow(card.Address),
 			MakeActionRow("電話①", card.Phone1, IsPriorityPhone(card.Phone1, priority)),
 			MakeActionRow("電話②", card.Phone2, IsPriorityPhone(card.Phone2, priority))));
-		stack.Children.Add(MakeChargeSection(card));
+		if (includeCharges) stack.Children.Add(MakeChargeSection(card));
 		stack.Children.Add(MakeBandCard("受付情報", BandDesk, BodyDesk,
 			MakePlainField("受付店", JoinDisplay(card.StoreCode, card.StoreName)),
 			MakePlainField("受付者", JoinDisplay(card.ReceptionistCode, card.ReceptionistName))));
@@ -1985,10 +1985,10 @@ public partial class JSystemPage : ContentPage
 		}
 	}
 
-	public View CreateSharedCustomerView(CustomerCard card)
+	public View CreateSharedCustomerView(CustomerCard card, bool includeCharges = true)
 	{
 		var stack = new VerticalStackLayout { Spacing = 8, BackgroundColor = PageBg };
-		AddCustomerSections(stack, card);
+		AddCustomerSections(stack, card, includeCharges);
 		return stack;
 	}
 

@@ -8,7 +8,12 @@
     <ScrollView BackgroundColor="White">
         <VerticalStackLayout Padding="16" Spacing="12" BackgroundColor="White">
             <Label Text="Jシステム設定" Style="{StaticResource Headline}" TextColor="Black" BackgroundColor="White" />
-            <Label Text="RegulusMobile 1.0.1" TextColor="Black" BackgroundColor="White" />
+            <Label Text="RegulusMobile 1.0.4" TextColor="Black" BackgroundColor="White" />
+            <HorizontalStackLayout Spacing="12">
+                <Label Text="緊急措置設定" VerticalOptions="Center" TextColor="Black" />
+                <Switch x:Name="EmergencySwitch" Toggled="OnEmergencySwitchToggled" />
+            </HorizontalStackLayout>
+            <Label Text="オン：予定の2つ目のコメントから顧客詳細・明細情報を表示します。オフ：従来どおりJシステムから取得します。変更は自動保存されます。" TextColor="Black" />
             <Label Text="JシステムのユーザーIDとパスワードを入力し、「認証情報を保存する」をオンにして保存してください。保存後に「ログインを試す」を押すとログインできます。" TextColor="Black" BackgroundColor="White" />
             <Button Text="ログインを試す" Clicked="OnTryLoginClicked" TextColor="Black" BackgroundColor="White" />
             <Label Text="ユーザーID" TextColor="Black" BackgroundColor="White" />

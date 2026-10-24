@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../Pages/JSystemPage.Session.cs" Link="JSystemPage.Session.cs" />
+    <Compile Include="../../Services/EmergencyCustomerParser.cs" Link="EmergencyCustomerParser.cs" />
   </ItemGroup>
 </Project>

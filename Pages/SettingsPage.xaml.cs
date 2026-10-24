@@ -35,6 +35,7 @@ public partial class SettingsPage : ContentPage
 		loading = true;
 		try
 		{
+			EmergencySwitch.IsToggled = EmergencyCustomerSettings.Enabled;
 			var stored = await JSystemCredentialStore.LoadAsync();
 			var hasStored = !string.IsNullOrEmpty(stored.UserId) || !string.IsNullOrEmpty(stored.Password);
 			SaveSwitch.IsToggled = hasStored;
@@ -50,6 +51,11 @@ public partial class SettingsPage : ContentPage
 		{
 			loading = false;
 		}
+	}
+
+	void OnEmergencySwitchToggled(object? sender, ToggledEventArgs e)
+	{
+		if (!loading) EmergencyCustomerSettings.Enabled = e.Value;
 	}
 
 	async void OnSaveSwitchToggled(object? sender, ToggledEventArgs e)

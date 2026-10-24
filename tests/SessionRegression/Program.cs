@@ -1,6 +1,7 @@
 using RegulusMobile;
 
 JSystemPage.RunRegressionTests();
+EmergencyCustomerTests.Run();
 
 namespace RegulusMobile
 {
